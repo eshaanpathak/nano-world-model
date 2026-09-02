@@ -84,11 +84,34 @@ class DiffusionWorldModel(nn.Module):
     ) -> Tuple[Dict[str, torch.Tensor], Optional[torch.Tensor]]:
         """
         Autoregressive rollout: generates chunks of (num_frames - n_context)
-        new frames at a time, feeding the last generated frame as context
-        for the next chunk, until the full horizon is covered.
+        new frames at a time, feeding the most recent context window to the
+        next chunk until the full horizon is covered.
+
+        ``NanoWM.forward`` shifts each action by one frame, so the first
+        action that should affect a generated frame belongs at index
+        ``n_context - 1`` in a sampled chunk.  Keeping that alignment here is
+        important for models trained with more than one context frame (for
+        example the CSGO checkpoints).
         """
-        context_frames = obs_0["visual"]  # [B, 1, C, H, W]
-        B, _, C, H, W = context_frames.shape
+        context_frames = obs_0["visual"]  # [B, T_ctx, C, H, W]
+        if context_frames.ndim != 5:
+            raise ValueError(
+                f"obs_0['visual'] must have shape [B, T, C, H, W], got "
+                f"{tuple(context_frames.shape)}"
+            )
+        if context_frames.shape[1] == 0:
+            raise ValueError("obs_0['visual'] must contain at least one context frame")
+        if act.ndim != 3:
+            raise ValueError(
+                f"act must have shape [B, horizon, action_dim], got "
+                f"{tuple(act.shape)}"
+            )
+
+        B, context_len, C, H, W = context_frames.shape
+        if act.shape[0] != B:
+            raise ValueError(
+                f"obs_0 and act batch sizes must match, got {B} and {act.shape[0]}"
+            )
         horizon = act.shape[1]
 
         if num_sampling_steps is None:
@@ -96,29 +119,62 @@ class DiffusionWorldModel(nn.Module):
 
         num_frames = self.args.model.num_frames
         n_context = self.args.model.n_context_frames
+        if n_context < 1 or n_context >= num_frames:
+            raise ValueError(
+                "model.n_context_frames must be in [1, model.num_frames), "
+                f"got n_context_frames={n_context}, num_frames={num_frames}"
+            )
         gen_per_chunk = num_frames - n_context
         scheduling_mode = self.args.model.scheduling_mode
 
-        # Encode initial context
-        ctx_flat = context_frames.reshape(B, C, H, W)
+        # Encode the supplied observations.  Planning normally starts from a
+        # single live frame, while some checkpoints were trained with a larger
+        # context window.  Left-pad the initial history by repeating its first
+        # frame so the temporal order (oldest -> newest) is preserved.
+        ctx_flat = context_frames.reshape(B * context_len, C, H, W)
         ctx_latents = self.latent_codec.encode(ctx_flat)
-        # ctx_latents: [B, C_lat, H_lat, W_lat]
+        # ctx_latents: [B, T_ctx, C_lat, H_lat, W_lat]
+        ctx_latents = ctx_latents.reshape(B, context_len, *ctx_latents.shape[1:])
 
-        all_latents = [ctx_latents.unsqueeze(1)]  # list of [B, 1, C_lat, H_lat, W_lat]
+        if context_len >= n_context:
+            history = ctx_latents[:, -n_context:]
+        else:
+            pad = ctx_latents[:, :1].expand(
+                -1, n_context - context_len, -1, -1, -1
+            )
+            history = torch.cat([pad, ctx_latents], dim=1)
+
+        # Preserve the last supplied observation as the rollout's initial
+        # frame; ``history`` is only the conditioning window used internally.
+        all_latents = [ctx_latents[:, -1:]]
         act_offset = 0
 
         while act_offset < horizon:
             chunk_len = min(gen_per_chunk, horizon - act_offset)
 
             # Always generate a full chunk (num_frames) to match temp_embed size,
-            # but only keep chunk_len new frames.
-            act_chunk = act[:, act_offset : act_offset + num_frames]
-            if act_chunk.shape[1] < num_frames:
-                pad = torch.zeros(B, num_frames - act_chunk.shape[1], act.shape[2], device=act.device)
-                act_chunk = torch.cat([act_chunk, pad], dim=1)
+            # but only keep chunk_len new frames.  The model shifts actions by
+            # one frame, therefore prefix the planned actions with dummy values
+            # for all but the final context slot.
+            planned_actions = act[:, act_offset : act_offset + chunk_len]
+            prefix = torch.zeros(
+                B,
+                n_context - 1,
+                act.shape[2],
+                device=act.device,
+                dtype=act.dtype,
+            )
+            suffix = torch.zeros(
+                B,
+                num_frames - (n_context - 1) - chunk_len,
+                act.shape[2],
+                device=act.device,
+                dtype=act.dtype,
+            )
+            act_chunk = torch.cat([prefix, planned_actions, suffix], dim=1)
 
             # Context latent for this chunk
-            cur_ctx = all_latents[-1][:, -1:, :, :, :]  # [B, 1, C_lat, H_lat, W_lat]
+            cur_ctx = history  # [B, n_context, C_lat, H_lat, W_lat]
 
             shape = [B, num_frames, *cur_ctx.shape[2:]]
 
@@ -138,6 +194,7 @@ class DiffusionWorldModel(nn.Module):
             # Keep only the newly generated frames (skip context)
             new_latents = chunk_latents[:, n_context : n_context + chunk_len]
             all_latents.append(new_latents)
+            history = torch.cat([history, new_latents], dim=1)[:, -n_context:]
             act_offset += chunk_len
 
         # Concatenate: [context_frame] + [all generated chunks]
