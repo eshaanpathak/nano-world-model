@@ -22,6 +22,10 @@ import scipy
 from pytorch_fid.fid_score import calculate_frechet_distance
 
 
+# Buffers holding per-sample feature vectors ([N, D]); FID/FVD need the full
+# matrix, so these must never be flattened into a 1-D tensor.
+FEATURE_BUFFER_KEYS = ("raw_gt_features", "raw_pred_features", "real_stats", "fake_stats")
+
 
 class CUDACallback(Callback):
     # see https://github.com/SeanNaren/minGPT/blob/master/mingpt/callback.py
@@ -125,7 +129,7 @@ class MetricsLogger(Callback):
             
             if metrics is not None:
                 for key, value in metrics.items():
-                    if key in ["raw_gt_features", "raw_pred_features", "real_stats", "fake_stats"]:
+                    if key in FEATURE_BUFFER_KEYS:
                         tensorized_value = torch.tensor(value, device=pl_module.device)
                         if key not in self.val_metrics_buffer.keys():
                             self.val_metrics_buffer[key] = tensorized_value
@@ -143,10 +147,13 @@ class MetricsLogger(Callback):
             
         gather_val_metrics_buffer = pl_module.all_gather(self.val_metrics_buffer)
         
-        # Flatten the gathered tensors
+        # Flatten the gathered tensors. Dispatch on the key, not on ndim: `all_gather`
+        # only prepends a world-size dim under a parallel strategy, so on a single device
+        # a feature buffer stays 2-D and an ndim test would flatten it to [N * D],
+        # collapsing mu/sigma to scalars and silently reporting FID/FVD ~1e-5.
         for key, value in gather_val_metrics_buffer.items():
-            if value.ndim > 2: # Features or stats
-                gather_val_metrics_buffer[key] = value.reshape(-1, *value.shape[2:])
+            if key in FEATURE_BUFFER_KEYS:
+                gather_val_metrics_buffer[key] = value.reshape(-1, value.shape[-1])
             else: # Scalars
                 gather_val_metrics_buffer[key] = value.reshape(-1)
 
@@ -184,12 +191,12 @@ class MetricsLogger(Callback):
                     s = scipy.linalg.sqrtm(np.dot(sigma_pred, sigma_true))
                     fvd = np.real(m + np.trace(sigma_pred + sigma_true - s * 2))
                     pl_module.log("val_eval/fvd", fvd, on_epoch=True, prog_bar=True, logger=True, sync_dist=False)
-                    mainlogger.info(f"Epoch end val fvd: {fvd}")
+                    mainlogger.info(f"Epoch end val fvd: {fvd} (over {raw_gt_features.shape[0]} clips, {raw_gt_features.shape[1]}-d i3d features)")
 
                 if mu_real is not None and mu_fake is not None:
                     fid = calculate_frechet_distance(mu_real, sigma_real, mu_fake, sigma_fake)
                     pl_module.log("val_eval/fid", fid, on_epoch=True, prog_bar=True, logger=True, sync_dist=False)
-                    mainlogger.info(f"Epoch end val fid: {fid}")
+                    mainlogger.info(f"Epoch end val fid: {fid} (over {real_stats.shape[0]} frames, {real_stats.shape[1]}-d inception features)")
 
             self.val_metrics_buffer = {}
             torch.cuda.empty_cache()

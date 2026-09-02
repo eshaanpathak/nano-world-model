@@ -51,7 +51,7 @@ export RT1_DATA_ROOT=/path/to/rt1_fractal      # RT-1 LeRobot mirror (optional)
 export RESULTS_DIR=/path/to/results            # checkpoints + logs land here
 ```
 
-Download the i3d torchscript used by FID/FVD evaluation:
+Download the i3d torchscript used by FVD evaluation (FID uses InceptionV3, which downloads itself on first use):
 
 ```bash
 mkdir -p pretrained_models/i3d && curl -L \

@@ -17,7 +17,7 @@ export RT1_DATA_ROOT=/path/to/rt1_fractal   # for RT-1 (LeRobot fractal)
 export RESULTS_DIR=/path/to/results         # checkpoints + logs land here
 ```
 
-Training also evaluates FID/FVD periodically, which needs an i3d torchscript:
+Training also evaluates FID/FVD periodically. FVD needs an i3d torchscript (FID uses InceptionV3):
 
 ```bash
 mkdir -p pretrained_models/i3d

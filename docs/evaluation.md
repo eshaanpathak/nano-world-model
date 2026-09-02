@@ -10,7 +10,7 @@ Same as training — the eval path uses the same dependencies:
 conda env create -f environment.yml && conda activate nanowm
 ```
 
-i3d weights for FID/FVD (one-time):
+i3d weights for FVD (one-time; FID uses InceptionV3, which downloads itself on first use):
 
 ```bash
 mkdir -p pretrained_models/i3d
@@ -38,10 +38,12 @@ We provide example scripts under `src/scripts/eval/`, including
 
 ```
 <run_dir>/
-├── eval_videos/        # sample comparison MP4s (GT vs prediction)
-├── metrics.json        # PSNR / SSIM / LPIPS / FID (and FVD if enough samples)
-└── .hydra/             # composed config snapshot
+├── eval_videos/step_<step>/<sample>/   # pred_video.mp4, gt_video.mp4, raw_data.npz
+├── tb/                                 # val_eval/{psnr,ssim,lpips,fid,fvd} scalars
+└── .hydra/                             # composed config snapshot
 ```
+
+Metric values are not written to a file. They are logged as `val_eval/*` to TensorBoard (and to W&B when enabled) and printed to the run log as `Epoch end val <metric>: <value>`.
 
 ### Standalone metric calculation
 
@@ -84,7 +86,7 @@ python src/main.py experiment=evaluate_only ... model.scheduling_mode=full_seque
 
 ## Metric definitions
 
-All four metrics are computed per-clip and averaged:
+Metrics are computed on predicted frames only; context frames are excluded.
 
 <div align="center">
 
@@ -93,11 +95,13 @@ All four metrics are computed per-clip and averaged:
 | **PSNR** | ↑ | per-pixel MSE, in dB |
 | **SSIM** | ↑ | structural similarity, [0, 1] |
 | **LPIPS** | ↓ | learned perceptual distance (AlexNet) |
-| **FID** | ↓ | Fréchet Inception Distance via i3d torchscript |
+| **FID** | ↓ | Fréchet Inception Distance, per-frame InceptionV3 pool3 features (`pytorch-fid`) |
 
 </div>
 
-For longer-horizon videos with enough samples, **FVD** is also computed. The i3d model path comes from `${PRETRAINED_MODELS_DIR}/i3d/i3d_torchscript.pt` or the relative fallback `pretrained_models/i3d/i3d_torchscript.pt`.
+PSNR/SSIM/LPIPS are per-clip averages. FID is *not*: predicted frames from every clip are pooled into a single set of InceptionV3 features and one Fréchet distance is computed over the pool (256 clips × 3 predicted frames = 768 frames for the 4-frame configs). That is far below the sample count FID is usually reported at, so these values are comparable across rows of this table but not against FID numbers from other papers.
+
+**FVD** is computed only when a clip has at least 10 predicted frames. It therefore runs on the 16-frame CSGO configs and is skipped for the 4-frame DINO-WM and RT-1 configs below, which is why those rows report no FVD. The i3d model path (FVD only) comes from `${PRETRAINED_MODELS_DIR}/i3d/i3d_torchscript.pt` or the relative fallback `pretrained_models/i3d/i3d_torchscript.pt`.
 
 ## Results on shipped checkpoints
 

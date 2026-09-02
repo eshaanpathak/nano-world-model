@@ -159,7 +159,7 @@ python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo --cfg 
 | `model.*` | `model=...` | architecture, action injection, scheduling, sampling steps |
 | `dataset.*` | `dataset=...` | data paths, splits, sampling modes, action/state dims |
 | `experiment.training.*` | `experiment=...` | optimizer, batch size, max_steps, checkpointing |
-| `experiment.evaluation.*` | `experiment=...` | val size, FID/i3d metrics, scheduling override |
+| `experiment.evaluation.*` | `experiment=...` | val size, FID/FVD metrics, scheduling override |
 | `experiment.diffusion.*` | `experiment=...` | noise schedule, pred target, ZTSNR, snr_gamma, timestep sampler |
 | `experiment.infra.*` | `experiment=...` | mixed precision, num_workers, compile, seed, num_nodes |
 | `planning.*` | `planning=...` | MPC horizon, CEM samples, goal source |
