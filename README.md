@@ -33,13 +33,18 @@ A minimalist repository for training video world models based on diffusion-forci
 
 ## 🚀 Quick Start
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first.
+The supported Linux x86_64 environment uses one committed lock for Python, PyTorch,
+CUDA wheels, and all dependencies. See [environment setup and verification](docs/environment.md).
+
 ```bash
 git clone https://github.com/simchowitzlabpublic/nano-world-model.git
 cd nano-world-model
-conda env create -f environment.yml && conda activate nanowm
+./nanowm sync
+./nanowm doctor --require-cuda
 ```
 
-LeRobot dataset loading is provided by `lerobot==0.3.3` in `environment.yml`.
+For the locked RT-1/LeRobot dependencies, run `./nanowm sync --extra rt1`.
 Do not install `lerobot-datasets`; it is a dataset format version, not a PyPI package.
 
 Set data + results paths (or use the gitignored `src/configs/local/paths.yaml` template — see [docs/config_system.md](docs/config_system.md#path-configuration)):
@@ -66,19 +71,19 @@ For dataset downloads (DINO-WM, RT-1, CSGO), see [docs/datasets/README.md](docs/
 DINO-WM PushT, NanoWM-B/2, default settings (pred-v · additive injection · cosine + ZTSNR):
 
 ```bash
-python src/main.py experiment=dino_wm_pusht dataset=dino_wm/pusht model=nanowm_b2
+./nanowm python src/main.py experiment=dino_wm_pusht dataset=dino_wm/pusht model=nanowm_b2
 ```
 
 CSGO with the L/2 model:
 
 ```bash
-python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo
+./nanowm python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo
 ```
 
 RT-1 (fractal) main run:
 
 ```bash
-python src/main.py experiment=rt1 dataset=rt1/rt1 model=nanowm_b2
+./nanowm python src/main.py experiment=rt1 dataset=rt1/rt1 model=nanowm_b2
 ```
 
 For reproducibility, we provide example scripts in `src/scripts/`. See [docs/training.md](docs/training.md) for the full training guide, design choices, and ablation tables.

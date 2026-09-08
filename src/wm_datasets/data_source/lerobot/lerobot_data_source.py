@@ -22,6 +22,7 @@ class LeRobotDataSource(DataSource):
         root: Optional[str] = None,
         image_key: str = "observation.images.image",
         pad_action_dim: Optional[int] = None,
+        video_backend: str = "pyav",
     ):
         try:
             from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -29,7 +30,7 @@ class LeRobotDataSource(DataSource):
         except ImportError:
             raise ImportError(
                 "LeRobot is required for LeRobotDataSource. "
-                "Install with: pip install lerobot"
+                "Install the locked RT-1 extra with: ./nanowm sync --extra rt1"
             )
 
         self.repo_id = repo_id
@@ -47,7 +48,8 @@ class LeRobotDataSource(DataSource):
                     repo_id=repo_id,
                     root=root,
                     image_transforms=None,
-                    episodes=None
+                    episodes=None,
+                    video_backend=video_backend,
                 )
                 num_total = temp_dataset.num_episodes
                 n_episodes = int(num_total * n_rollout)
@@ -62,7 +64,8 @@ class LeRobotDataSource(DataSource):
             repo_id=repo_id,
             root=root,
             image_transforms=None,
-            episodes=episodes
+            episodes=episodes,
+            video_backend=video_backend,
         )
 
         self.num_episodes = self.dataset.num_episodes

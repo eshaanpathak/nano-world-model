@@ -9,7 +9,7 @@ loader:
   # `root` points to a local mirror (download-time cache or a manual
   # copy). Set RT1_DATA_ROOT to override the local path.
   data_path: "IPEC-COMMUNITY/fractal20220817_data_lerobot"
-  root: "${oc.env:RT1_DATA_ROOT,./data/rt1_fractal}"
+  root: "${rt1_data_root}"
   image_key: "observation.images.image"
   normalize_action: True
   train_slice_mode: "random"     # 87K episodes, random sampling for efficiency

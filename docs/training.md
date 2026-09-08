@@ -5,7 +5,7 @@ End-to-end guide to training a Nano World Model: workflow, design choices (with 
 ## Setup
 
 ```bash
-conda env create -f environment.yml && conda activate nanowm
+./nanowm sync
 ```
 
 Set data paths once (or use the `local/paths.yaml` template — see [config_system.md](config_system.md#path-configuration)):
@@ -29,16 +29,16 @@ curl -L "https://www.dropbox.com/scl/fi/c5nfs6c422nlpj880jbmh/i3d_torchscript.pt
 
 ```bash
 # CSGO — NanoWM-L/2 model
-python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo
+./nanowm python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo
 
 # RT-1 (fractal) — main run, NanoWM-B/2
-python src/main.py experiment=rt1 dataset=rt1/rt1 model=nanowm_b2
+./nanowm python src/main.py experiment=rt1 dataset=rt1/rt1 model=nanowm_b2
 
 # DINO-WM PushT — NanoWM-B/2
-python src/main.py experiment=dino_wm_pusht dataset=dino_wm/pusht model=nanowm_b2
+./nanowm python src/main.py experiment=dino_wm_pusht dataset=dino_wm/pusht model=nanowm_b2
 
 # Resume from checkpoint
-python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo \
+./nanowm python src/main.py experiment=csgo dataset=game/csgo model=nanowm_l2_csgo \
     experiment.resume_from_checkpoint=<path/to/ckpt>
 ```
 
@@ -96,14 +96,14 @@ We support **ε** (epsilon), **v**, **x**, and **flow-matching (with v)** predic
 
 ```bash
 # Override via CLI
-python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
+./nanowm python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
     experiment.diffusion.pred_name=x
 ```
 
 Flow matching can be launched the same way:
 
 ```bash
-python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
+./nanowm python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
     experiment.diffusion.pred_name=flow \
     experiment.diffusion.snr_gamma=0.0 \
     experiment.diffusion.zero_terminal_snr=false
@@ -153,7 +153,7 @@ We also ran the same five on PushT (NanoWM-B/2, 30k steps, 256 fixed val samples
 
 ```bash
 # Use FiLM injection
-python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
+./nanowm python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
     model.action_injection.type=film
 ```
 
@@ -174,7 +174,7 @@ Width × depth × patch-size sweep. B/2 is the reference; S/2 is ~4× smaller, L
 Monotonic gains across all four metrics — no scaling break visible at 460M. **Default**: `nanowm_b2` (best quality / cost trade for most uses); pick L/2 when capacity matters, S/2 when iteration speed does.
 
 ```bash
-python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_l2
+./nanowm python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_l2
 ```
 
 ## Reproducing the ablation arms
@@ -182,7 +182,7 @@ python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_l2
 The completed ablation checkpoints above are all trained with `experiment=ablation_rt1` (50k steps, NanoWM-B/2 unless overridden). To reproduce e.g. the `pred=x` arm:
 
 ```bash
-python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
+./nanowm python src/main.py experiment=ablation_rt1 dataset=rt1/rt1 model=nanowm_b2 \
     experiment.diffusion.pred_name=x \
     experiment.diffusion.noise_schedule=squaredcos_cap_v2 \
     experiment.diffusion.zero_terminal_snr=true
