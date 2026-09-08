@@ -10,12 +10,13 @@ import platform
 import sys
 import tempfile
 from pathlib import Path
+from contextlib import nullcontext
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 
-def check(require_cuda=False, rt1=False):
+def check(require_cuda=False, rt1=False, cuda_dtype="bfloat16"):
     import torch
     import torchvision
     from pytorch_lightning import Trainer
@@ -60,7 +61,9 @@ def check(require_cuda=False, rt1=False):
             device = torch.device("cuda", index)
             with torch.cuda.device(device):
                 x = torch.randn(32, 32, device=device, requires_grad=True)
-                with torch.autocast("cuda", dtype=torch.bfloat16):
+                # The training check defaults to BF16. FP32 inference also runs on T4.
+                autocast = torch.autocast("cuda", dtype=torch.bfloat16) if cuda_dtype == "bfloat16" else nullcontext()
+                with autocast:
                     loss = (x @ x).float().square().mean()
                 loss.backward()
                 torch.cuda.synchronize(device)
@@ -71,6 +74,7 @@ def check(require_cuda=False, rt1=False):
         "status": "passed", "python": platform.python_version(),
         "platform": platform.platform(), "torch": torch.__version__,
         "cuda_runtime": torch.version.cuda, "gpus": gpus, "rt1": rt1,
+        "cuda_test_dtype": cuda_dtype,
         "lock_sha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
         "versions": {name: importlib.metadata.version(name) for name in (
             "torchvision", "pytorch-lightning", "diffusers", "transformers",
@@ -84,9 +88,11 @@ if __name__ == "__main__":
     parser.add_argument("--require-cuda", action="store_true")
     parser.add_argument("--rt1", action="store_true")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--cuda-dtype", choices=["bfloat16", "float32"], default="bfloat16",
+                        help="GPU kernel check precision; use float32 for FP32 inference on pre-Ampere GPUs")
     args = parser.parse_args()
     try:
-        report = check(args.require_cuda, args.rt1)
+        report = check(args.require_cuda, args.rt1, args.cuda_dtype)
     except Exception:
         print("Environment check failed. Re-run ./nanowm sync (add --extra rt1 for RT-1).\n"
               "See docs/environment.md for the supported driver/platform requirements.",

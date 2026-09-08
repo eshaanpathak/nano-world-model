@@ -10,6 +10,14 @@ permissions:
   contents: read
 
 jobs:
+  english-content:
+    name: English repository content
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject Chinese text in repository files and notebook content
+        run: python3 scripts/check_repository_language.py
+
   locked-environment:
     name: Locked environment (${{ matrix.profile }})
     runs-on: ubuntu-22.04
