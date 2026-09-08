@@ -13,6 +13,10 @@ sys.path.append(os.path.split(sys.path[0])[0])
 
 import torch
 import argparse
+import json
+import random
+import time
+import numpy as np
 from pathlib import Path
 from einops import rearrange
 from omegaconf import OmegaConf
@@ -30,11 +34,23 @@ from utils.nanowm_utils import find_model
 from diffusion.df_sample import dfot_sample
 from wm_datasets import create_train_val_datasets
 from sampling_utils import encode_frames, decode_latents, save_video, save_comparison_video, resize_frames
+from rollout_selection import select_rollout_slices
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 def main(args):
+    started = time.monotonic()
+    if not 0 < args.history_length < args.model.num_frames:
+        raise ValueError("history_length must be positive and smaller than model.num_frames")
+    if args.rollout_length <= args.history_length or args.batch_size < 1:
+        raise ValueError("rollout_length must exceed history_length and batch_size must be positive")
+    seed = getattr(args, "seed", 3407)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     torch.set_grad_enabled(False)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -106,24 +122,16 @@ def main(args):
     
     # Filter for valid slices that have enough remaining frames for rollout_length
     print(f"Filtering dataset for slices with enough headroom (rollout_length={rollout_length})...")
-    if dataset.slice_mode != "exhaustive":
-        raise ValueError(f"Rollout requires exhaustive slice_mode, got '{dataset.slice_mode}'")
-
-    valid_slice_indices = []
-    for i in range(len(dataset)):
-        slice_idx = dataset.slice_indices[i]
-        slice_info = dataset.all_slices[slice_idx]
-        traj_idx = slice_info.traj_idx
-        start_frame = slice_info.start_frame
-        total_len = dataset.data_source.get_seq_length(traj_idx)
-        if (total_len - start_frame) >= rollout_length * frame_interval:
-            valid_slice_indices.append(i)
-        if len(valid_slice_indices) >= args.num_samples:
-            break
-            
+    valid_slice_indices = select_rollout_slices(
+        dataset, args.num_samples, rollout_length, frame_interval,
+        unique_trajectories=getattr(args, "unique_trajectories", False),
+    )
     num_samples = len(valid_slice_indices)
-    if num_samples < args.num_samples:
-        print(f"Warning: Only found {num_samples} valid slices with enough length (requested {args.num_samples})")
+    report = {"seed": seed, "sampling_steps": args.model.num_sampling_steps,
+              "history_length": history_length, "rollout_length": rollout_length,
+              "frame_interval": frame_interval, "batch_size": batch_size,
+              "gpu": torch.cuda.get_device_name() if device == "cuda" else "cpu",
+              "torch": torch.__version__, "samples": []}
     
     print(f"\nRollout configuration:")
     print(f"  Total samples to process: {num_samples}")
@@ -226,15 +234,34 @@ def main(args):
             
         print(f"Decoding and saving batch results...")
         gen_frames_batch = decode_latents(vae, generated_latents, vae_precision=vae_precision)
-        gt_frames_batch = decode_latents(vae, gt_latents, vae_precision=vae_precision)
+        # Ground truth must be the recorded images, not a lossy VAE reconstruction.
+        gt_frames_batch = ((gt_visual + 1) / 2).clamp(0, 1)
         
         for i in range(current_batch_size):
             sample_id = start_idx + i
             save_video(gen_frames_batch[i], str(save_dir / f"sample_{sample_id:04d}_gen.mp4"), fps=args.fps)
             save_video(gt_frames_batch[i], str(save_dir / f"sample_{sample_id:04d}_gt.mp4"), fps=args.fps)
             save_comparison_video(gt_frames_batch[i], gen_frames_batch[i], str(save_dir / f"sample_{sample_id:04d}_compare.mp4"), fps=args.fps)
+            from skimage.metrics import structural_similarity
+            truth = gt_frames_batch[i, history_length:].permute(0, 2, 3, 1).cpu().numpy()
+            pred = gen_frames_batch[i, history_length:].permute(0, 2, 3, 1).cpu().numpy()
+            frozen = gt_frames_batch[i, history_length - 1].permute(1, 2, 0).cpu().numpy()
+            if not np.isfinite(pred).all():
+                raise RuntimeError("Generated frames contain NaN or infinity")
+            def metrics(images):
+                mse = np.mean((truth - images) ** 2, axis=(1, 2, 3))
+                ssim = [structural_similarity(a, b, channel_axis=-1, data_range=1.0)
+                        for a, b in zip(truth, images)]
+                return {"psnr_db": float(np.mean(-10 * np.log10(np.maximum(mse, 1e-12)))),
+                        "ssim": float(np.mean(ssim))}
+            report["samples"].append({"sample_id": sample_id, **batch_metas[i],
+                                      "prediction": metrics(pred),
+                                      "repeat_last_context": metrics(np.repeat(frozen[None], len(truth), axis=0))})
             
-    print(f"Done! Processed {num_samples} samples.")
+    report["elapsed_seconds"] = time.monotonic() - started
+    report["peak_gpu_memory_gib"] = torch.cuda.max_memory_allocated() / 2**30 if device == "cuda" else 0
+    (save_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(f"Done! Processed {num_samples} samples. Report: {save_dir / 'report.json'}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -259,6 +286,9 @@ if __name__ == "__main__":
                         help="DFoT stabilization noise level in [0, 1) for context frames. "
                              "0.0 disables; 0.02 is the DFoT default recommended starting point.")
     parser.add_argument("--use_fp16", action="store_true", help="Use fp16")
+    parser.add_argument("--seed", type=int, default=3407, help="Random seed (including VAE encoding)")
+    parser.add_argument("--unique_trajectories", action="store_true",
+                        help="Choose at most one clip from each validation trajectory")
     parser.add_argument("--vae_model_path", type=str, default=None,
                         help="Override the VAE path from the training config (e.g. local dir for offline nodes).")
 
@@ -282,7 +312,8 @@ if __name__ == "__main__":
 
     # Top-level / non-hierarchical CLI args
     for key in ('ckpt', 'save_path', 'num_samples', 'batch_size', 'rollout_length',
-                'history_length', 'fps', 'eta', 'use_fp16', 'vae_model_path'):
+                'history_length', 'fps', 'eta', 'use_fp16', 'vae_model_path',
+                'seed', 'unique_trajectories'):
         val = cli_args.get(key)
         if val is not None:
             cli_overrides[key] = val

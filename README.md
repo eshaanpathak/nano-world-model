@@ -33,6 +33,10 @@ A minimalist repository for training video world models based on diffusion-forci
 
 ## 🚀 Quick Start
 
+Try the [Colab quickstart notebook](colab_quickstart.ipynb) to download the official
+Point Maze checkpoint and preview predictions beside recorded validation frames.
+Select a GPU runtime, then run all cells; the notebook uses the same lock below.
+
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first.
 The supported Linux x86_64 environment uses one committed lock for Python, PyTorch,
 CUDA wheels, and all dependencies. See [environment setup and verification](docs/environment.md).
