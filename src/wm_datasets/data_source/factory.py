@@ -52,7 +52,7 @@ def create_data_source(
         # RT-1 is consumed as the lerobot HF dataset (fractal20220817_data).
         # `data_path` is the HF repo_id; optional `root` kwarg points to a
         # local mirror. No per-episode .pth format is supported.
-        lerobot_params = {'root', 'image_key', 'preload_trajectories', 'episodes'}
+        lerobot_params = {'root', 'image_key', 'preload_trajectories', 'episodes', 'video_backend'}
         lerobot_kwargs = {k: v for k, v in kwargs.items() if k in lerobot_params}
         return LeRobotDataSource(
             repo_id=data_path,

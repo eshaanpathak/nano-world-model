@@ -7,7 +7,7 @@ Long-horizon autoregressive rollout via diffusion forcing — predict 50+ frames
 No extras beyond the training stack:
 
 ```bash
-conda env create -f environment.yml && conda activate nanowm
+./nanowm sync && source .venv/bin/activate
 ```
 
 ## Demo: CSGO 100k, 50-frame rollout

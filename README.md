@@ -36,10 +36,16 @@ A minimalist repository for training video world models based on diffusion-forci
 ```bash
 git clone https://github.com/simchowitzlabpublic/nano-world-model.git
 cd nano-world-model
-conda env create -f environment.yml && conda activate nanowm
+./nanowm sync
+./nanowm doctor --require-cuda
+source .venv/bin/activate
 ```
 
-LeRobot dataset loading is provided by `lerobot==0.3.3` in `environment.yml`.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first.
+The supported Linux x86_64 environment uses one committed lock for Python, PyTorch,
+CUDA wheels, and all dependencies. See [environment setup and verification](docs/environment.md).
+
+For the locked RT-1/LeRobot dependencies, run `./nanowm sync --extra rt1`.
 Do not install `lerobot-datasets`; it is a dataset format version, not a PyPI package.
 
 Set data + results paths (or use the gitignored `src/configs/local/paths.yaml` template — see [docs/config_system.md](docs/config_system.md#path-configuration)):

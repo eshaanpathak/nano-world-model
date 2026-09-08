@@ -7,7 +7,7 @@ How to evaluate a trained world model: standalone metric runs, sampling pipeline
 Same as training — the eval path uses the same dependencies:
 
 ```bash
-conda env create -f environment.yml && conda activate nanowm
+./nanowm sync && source .venv/bin/activate
 ```
 
 i3d weights for FVD (one-time; FID uses InceptionV3, which downloads itself on first use):

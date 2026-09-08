@@ -81,7 +81,11 @@ cp src/configs/local/paths.yaml.example src/configs/local/paths.yaml
 # Edit dataset_dir / csgo_data_dir / vae_model_path / results_dir
 ```
 
-CLI overrides (`dataset_dir=/path` etc.) work too and beat both.
+The optional local file is loaded automatically. Precedence: **CLI > local YAML >
+environment variables > defaults**. Leave a local key commented to use its environment
+variable. Use `~local` to ignore this file. Relative paths are anchored to the
+original invocation directory; `./nanowm` starts in the repository root. RT-1 uses
+`rt1_data_root`, and I3D uses `pretrained_models_dir`. See [environment.md](environment.md).
 
 Semantic encoder runs use the same 256-token DiT grid as SD-VAE by switching
 both the codec and model shape:

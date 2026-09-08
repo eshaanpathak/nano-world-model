@@ -19,15 +19,20 @@ DA3 jointly estimates per-frame depth maps and camera parameters from multiple f
 
 ## Setup
 
+These native application dependencies are outside the validated training baseline.
+Use a separate environment below so they cannot change the training environment.
+See [environment scope](../environment.md#migration-and-scope).
+
 The base training stack plus DA3 + viser:
 
 ```bash
-conda env create -f environment.yml && conda activate nanowm   # base stack
+UV_PROJECT_ENVIRONMENT=.venv-da3 ./nanowm sync
+source .venv-da3/bin/activate   # separate experimental application environment
 
 # Video-to-3D extras
-pip install viser xformers
+uv pip install viser xformers
 git clone https://github.com/ByteDance-Seed/Depth-Anything-3.git
-cd Depth-Anything-3 && pip install -e . && cd ..
+cd Depth-Anything-3 && uv pip install -e . && cd ..
 ```
 
 Verify:

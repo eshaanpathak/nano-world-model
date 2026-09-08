@@ -43,11 +43,7 @@ evaluation:
     log_every_n_train_steps: 5000
     buffer_size: 32
     max_batchsize: 2
-    # Resolved against PRETRAINED_MODELS_DIR (exported by common.sh to
-    # nano-world-model-data/pretrained_models) so the path stays valid after
-    # Hydra chdir's into the run dir. Fallback relative string matches the
-    # legacy layout for non-launcher invocations.
-    i3d_model_path: "${oc.env:PRETRAINED_MODELS_DIR,pretrained_models}/i3d/i3d_torchscript.pt"
+    i3d_model_path: "${pretrained_models_dir}/i3d/i3d_torchscript.pt"
 
 diffusion:
   noise_schedule: "squaredcos_cap_v2"

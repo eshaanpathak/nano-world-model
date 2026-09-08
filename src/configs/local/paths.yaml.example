@@ -1,27 +1,17 @@
 # @package _global_
-# Local path configuration - copy to paths.yaml and edit for your environment
-# This file (paths.yaml) is gitignored and will NOT be committed
-#
-# Usage:
-#   cp src/configs/local/paths.yaml.example src/configs/local/paths.yaml
-#   # Edit paths below, then run training as usual
+# Copy to paths.yaml (gitignored) and uncomment only settings you need.
+# Automatically loaded by src/main.py. Priority: CLI > this file > env > defaults.
+# Relative paths are anchored to the original invocation directory, even with Hydra chdir.
+# ./nanowm always starts commands at the repository root.
 
-# Root directory for DINO-WM datasets (point_maze, pusht_noise, wall_single, deformable)
-dataset_dir: /path/to/dino_wm_data
+# dataset_dir: /absolute/path/to/dino_wm_data
+# csgo_data_dir: /absolute/path/to/csgo_data
+# rt1_data_root: /absolute/path/to/rt1_fractal
+# results_dir: ./results
+# pretrained_models_dir: ./pretrained_models
 
-# Root directory for CSGO dataset
-csgo_data_dir: /path/to/csgo_data
-
-# Path to pretrained VAE weights (SD 1.x compatible)
-# Options:
-#   - Download from HuggingFace: maxin-cn/Latte (vae subfolder)
-#   - Or use PixArt-alpha VAE: PixArt-alpha/PixArt-XL-2-512x512 (vae subfolder)
-vae_model_path: /path/to/vae
-
-# Optional semantic encoder paths.
-webdino_model_path: facebook/webssl-dino300m-full2b-224
-vjepa21_model_path: /path/to/vjepa2_1_vit_large_384
-vjepa2_repo_path: /path/to/facebookresearch/vjepa2
-
-# Output directory for training results and checkpoints
-results_dir: ./results
+# Local VAE directory or Hugging Face repo ID (default: stabilityai/sd-vae-ft-mse).
+# vae_model_path: /absolute/path/to/vae
+# webdino_model_path: facebook/webssl-dino300m-full2b-224
+# vjepa21_model_path: /absolute/path/to/vjepa2_1_vit_large_384
+# vjepa2_repo_path: /absolute/path/to/facebookresearch/vjepa2

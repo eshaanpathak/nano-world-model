@@ -4,13 +4,18 @@ CEM-style model-predictive control over the diffusion world model. Each plan sam
 
 ## Setup
 
+These native application dependencies are outside the validated training baseline.
+Use a separate environment below so they cannot change the training environment.
+See [environment scope](../environment.md#migration-and-scope).
+
 Planning needs the simulator environments on top of the training stack:
 
 ```bash
-conda env create -f environment.yml && conda activate nanowm   # base stack
+UV_PROJECT_ENVIRONMENT=.venv-planning ./nanowm sync
+source .venv-planning/bin/activate   # separate experimental application environment
 
 # Planning-specific extras (PushT, point_maze, deformable envs)
-pip install gym pymunk pygame shapely scikit-image d4rl
+uv pip install gym pymunk pygame shapely scikit-image d4rl
 ```
 
 **point_maze** also requires **MuJoCo 2.10** (binary, not pip):

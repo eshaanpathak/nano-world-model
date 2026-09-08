@@ -5,7 +5,7 @@ End-to-end guide to training a Nano World Model: workflow, design choices (with 
 ## Setup
 
 ```bash
-conda env create -f environment.yml && conda activate nanowm
+./nanowm sync && source .venv/bin/activate
 ```
 
 Set data paths once (or use the `local/paths.yaml` template — see [config_system.md](config_system.md#path-configuration)):
