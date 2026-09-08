@@ -7,7 +7,7 @@ How to evaluate a trained world model: standalone metric runs, sampling pipeline
 Same as training — the eval path uses the same dependencies:
 
 ```bash
-./nanowm sync && source .venv/bin/activate
+./nanowm sync
 ```
 
 i3d weights for FVD (one-time; FID uses InceptionV3, which downloads itself on first use):
@@ -23,7 +23,7 @@ curl -L "https://www.dropbox.com/scl/fi/c5nfs6c422nlpj880jbmh/i3d_torchscript.pt
 ### Evaluate a checkpoint on a fixed validation subset
 
 ```bash
-python src/main.py experiment=evaluate_only \
+./nanowm python src/main.py experiment=evaluate_only \
     dataset=dino_wm/pusht model=nanowm_b2 \
     experiment.resume_from_checkpoint=<path/to/ckpt> \
     experiment.evaluation.batch_size=1 \
@@ -50,7 +50,7 @@ Metric values are not written to a file. They are logged as `val_eval/*` to Tens
 If you already have rollout videos, compute metrics directly:
 
 ```bash
-python src/sample/evaluate_metrics.py \
+./nanowm python src/sample/evaluate_metrics.py \
     --video_dir /path/to/rollout_results \
     --history_length 1 \
     --output_csv metrics.csv
@@ -59,7 +59,7 @@ python src/sample/evaluate_metrics.py \
 Plot a comparison across runs (e.g., different history lengths):
 
 ```bash
-python src/sample/plot_metrics.py \
+./nanowm python src/sample/plot_metrics.py \
     --csvs metrics_h1.csv metrics_h2.csv metrics_h3.csv \
     --output rollout_comparison.png
 ```
@@ -80,7 +80,7 @@ The model supports two scheduling modes during sampling:
 DDIM steps are controlled by `model.num_sampling_steps` (250 default for sequential; 50 is a sensible setting for full_sequence). Switch modes via:
 
 ```bash
-python src/main.py experiment=evaluate_only ... model.scheduling_mode=full_sequence \
+./nanowm python src/main.py experiment=evaluate_only ... model.scheduling_mode=full_sequence \
     model.num_sampling_steps=50
 ```
 
@@ -136,7 +136,7 @@ Standardized eval: 256 fixed val samples (seed 42), 250 DDIM steps, sequential s
 Each row is a single eval command. Replace `<ckpt>` with the corresponding HF model checkpoint path (after downloading) and `<dataset>` with the matching `dino_wm/{point_maze,wall,pusht,rope,granular}` or `rt1/rt1`.
 
 ```bash
-python src/main.py experiment=evaluate_only \
+./nanowm python src/main.py experiment=evaluate_only \
     dataset=<dataset> model=nanowm_b2 \
     experiment.resume_from_checkpoint=<ckpt> \
     experiment.evaluation.batch_size=1 \

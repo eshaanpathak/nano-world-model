@@ -7,7 +7,7 @@ Long-horizon autoregressive rollout via diffusion forcing — predict 50+ frames
 No extras beyond the training stack:
 
 ```bash
-./nanowm sync && source .venv/bin/activate
+./nanowm sync
 ```
 
 ## Demo: CSGO 100k, 50-frame rollout
@@ -23,7 +23,7 @@ No extras beyond the training stack:
 Reproduce:
 
 ```bash
-python src/sample/rollout.py \
+./nanowm python src/sample/rollout.py \
     --config <path/to/training_run/config.yaml> \
     --ckpt <path/to/csgo_100k.ckpt> \
     --save_path results/long_rollout/csgo_100k \
@@ -76,7 +76,7 @@ results/long_rollout/<run>/
 Long-rollout videos feed naturally into the [video → 3D point cloud pipeline](video_to_3d.md). For CSGO, restore the native aspect ratio before depth inference:
 
 ```bash
-python src/scripts/video_to_pointcloud.py \
+./nanowm python src/scripts/video_to_pointcloud.py \
     --video results/long_rollout/csgo_100k/sample_0000_gen.mp4 \
     --output output/csgo_scene.ply \
     --native_res 150 280 \

@@ -6,7 +6,10 @@ wheels support RTX 3090/3090 Ti (Ampere) and RTX 5090 (Blackwell). Use a current
 NVIDIA driver; the validated baseline is Linux driver 580.173.02. A local CUDA
 toolkit, Conda CUDA packages, and `LD_LIBRARY_PATH` edits are not required.
 `torch.compile` additionally needs a host C/C++ compiler (for example `gcc`/`g++`).
-macOS, Windows without WSL2, and Linux ARM are outside this locked runtime.
+The RT-1 extra also builds LeRobot's `evdev` dependency and needs a compiler plus
+Linux input headers (Ubuntu's `build-essential` and `linux-libc-dev` packages).
+Use glibc 2.28 or newer; CI checks Ubuntu 22.04, and the GPU hosts use Ubuntu
+24.04. macOS, Windows without WSL2, and Linux ARM are outside this locked runtime.
 
 Video loading keeps the `decord` API through the pinned
 [EVA Decord fork](https://github.com/georgia-tech-db/eva-decord). The original
