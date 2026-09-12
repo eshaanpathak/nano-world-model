@@ -35,6 +35,11 @@ wandb:
   entity: ${oc.env:WANDB_ENTITY,null}
   project: ${oc.env:WANDB_PROJECT,nano-world-model}
   mode: ${oc.env:WANDB_MODE,online}
+  # Cluster related runs (e.g. a sweep) together in the W&B UI.
+  # Override with wandb.group=my_sweep_name on the CLI.
+  group: ${oc.env:WANDB_GROUP,null}
+  # Tags for cross-sweep filtering. Override with wandb.tags=[a,b] on the CLI.
+  tags: []
 
 hydra:
   run:

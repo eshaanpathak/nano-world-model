@@ -24,7 +24,7 @@ def create_tensorboard_logger(experiment_dir, name="nanowm"):
     return TensorBoardLogger(tb_dir, name=name)
 
 
-def create_wandb_logger(project, name, experiment_dir, entity=None, mode="online"):
+def create_wandb_logger(project, name, experiment_dir, entity=None, mode="online", group=None, tags=None):
     """
     Create a Weights & Biases logger (optional).
 
@@ -34,6 +34,8 @@ def create_wandb_logger(project, name, experiment_dir, entity=None, mode="online
         experiment_dir: Root experiment directory for saving
         entity: WandB entity (username/organization), optional
         mode: "online", "offline", or "disabled"
+        group: Group name to cluster related runs (e.g. a sweep) in the W&B UI, optional
+        tags: List of tags for cross-sweep filtering, optional
 
     Returns:
         WandbLogger instance or None if WandB not available or disabled
@@ -47,5 +49,7 @@ def create_wandb_logger(project, name, experiment_dir, entity=None, mode="online
         name=name,
         save_dir=experiment_dir,
         entity=entity,
-        offline=(mode == "offline")
+        offline=(mode == "offline"),
+        group=group,
+        tags=list(tags) if tags else None,
     )

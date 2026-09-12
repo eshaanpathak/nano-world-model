@@ -1,0 +1,27 @@
+defaults:
+  - default
+
+# Fast-iteration preset for building intuition, not for matching any
+# published number. Tuned so a small model (model=nanowm_s2) on a small
+# DINO-WM dataset (dataset=dino_wm/point_maze or dino_wm/wall) produces
+# visible train/val loss movement within a ~20 minute run.
+#
+# Example:
+#   ./nanowm python src/main.py experiment=quickstart \
+#       dataset=dino_wm/point_maze model=nanowm_s2 \
+#       experiment.diffusion.pred_name=x wandb.group=pred_target_sweep
+training:
+  max_steps: 2000
+  batch_size: 8
+  log_every: 20
+  val_every_n_steps: 100
+  checkpointing:
+    across_timesteps:
+      every_n_train_steps: 1000
+    latest:
+      every_n_train_steps: 200
+
+evaluation:
+  validation_size: 8
+  metrics:
+    log_every_n_train_steps: 200

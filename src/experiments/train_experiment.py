@@ -460,7 +460,9 @@ class TrainExperiment(BaseExperiment):
                 name=f"{self.cfg.model.name}-F{self.cfg.model.num_frames}-{self.cfg.dataset.name}-{self.cfg.experiment.diffusion.pred_name}",
                 experiment_dir=experiment_dir,
                 entity=self.cfg.wandb.entity,
-                mode=self.cfg.wandb.mode
+                mode=self.cfg.wandb.mode,
+                group=self.cfg.wandb.group,
+                tags=self.cfg.wandb.tags,
             )
             if wandb_logger is not None:
                 loggers.append(wandb_logger)
