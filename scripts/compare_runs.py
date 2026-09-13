@@ -38,11 +38,13 @@ def fetch_runs(api, project, group=None, tag=None, run_ids=None):
 
 
 def latest_metrics(run):
-    # history() returns all logged steps; take the last non-null value per metric
-    # rather than assuming every metric was logged on the same step.
-    history = run.history(keys=METRICS, pandas=False)
+    # scan_history() walks every logged row without requiring all METRICS to
+    # be present on the same step (history(keys=...) does an intersection
+    # join across keys, which returns nothing when metrics are logged on
+    # different cadences, e.g. train_loss every step vs. val_loss only on
+    # validation checks). Take the last non-null value per metric instead.
     result = {}
-    for row in history:
+    for row in run.scan_history():
         for tag in METRICS:
             if row.get(tag) is not None:
                 result[tag] = (row.get("_step"), row[tag])
