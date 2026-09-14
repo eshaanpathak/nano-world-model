@@ -42,6 +42,7 @@ from diffusion.df_sample import dfot_sample
 from utils.nanowm_utils import (
     clip_grad_norm_,
     cleanup,
+    get_grad_norm,
 )
 from utils.distributed_utils import is_rank_zero
 from utils.logger_utils import create_tensorboard_logger, create_wandb_logger
@@ -240,21 +241,29 @@ class NanoWMTrainingModule(LightningModule):
         loss_dict = self.diffusion.training_losses(self.model, x, t, model_kwargs)
         loss = loss_dict["loss"].mean()
 
-        if self.global_step < self.args.experiment.training.gradient_clip_start_step:
-            gradient_norm = clip_grad_norm_(self.model.parameters(), self.args.experiment.training.gradient_clip_norm, clip_grad=False)
-        else:
-            gradient_norm = clip_grad_norm_(self.model.parameters(), self.args.experiment.training.gradient_clip_norm, clip_grad=True)
-
         self.log("train_loss", loss, prog_bar=True, logger=True, sync_dist=True, batch_size=x.shape[0])
-        self.log("gradient_norm", gradient_norm, logger=True, sync_dist=True, batch_size=x.shape[0])
+        self._last_train_loss = loss.detach()
+        self._last_train_batch_size = x.shape[0]
+        return loss
 
-        if (self.global_step + 1) % self.args.experiment.training.log_every == 0:
+    def configure_gradient_clipping(self, optimizer, optimizer_idx, gradient_clip_val=None, gradient_clip_algorithm=None):
+        # Runs after backward (and DDP grad sync), once per optimizer step. Clipping inside
+        # training_step would act on the previous step's stale grads instead.
+        training = self.args.experiment.training
+        gradient_norm = clip_grad_norm_(
+            self.model.parameters(),
+            training.gradient_clip_norm,
+            clip_grad=self.global_step >= training.gradient_clip_start_step,
+        )
+        self.log("gradient_norm", gradient_norm, logger=True, sync_dist=True, batch_size=self._last_train_batch_size)
+        self.log("gradient_norm_clipped", get_grad_norm(self.model.parameters()), logger=True, sync_dist=True, batch_size=self._last_train_batch_size)
+
+        if (self.global_step + 1) % training.log_every == 0:
             self.logger_instance.info(
-                f"(step={self.global_step+1:07d}/epoch={self.current_epoch:04d}) Train Loss: {loss:.4f}, Gradient Norm: {gradient_norm:.4f}"
+                f"(step={self.global_step+1:07d}/epoch={self.current_epoch:04d}) Train Loss: {self._last_train_loss:.4f}, Gradient Norm: {gradient_norm:.4f}"
             )
             for handler in self.logger_instance.handlers:
                 handler.flush()
-        return loss
 
     def validation_step(self, batch, batch_idx):
         x = batch["video"].to(self.device)
