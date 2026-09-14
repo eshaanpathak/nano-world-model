@@ -15,10 +15,11 @@
 #   ./run_experiments.sh --dry-run  # just print the commands, don't run them
 #
 # Each run's stdout/stderr goes to its own file under logs/<run-timestamp>/
-# (concurrent `modal run` output interleaved on one terminal is unreadable).
-# After all runs finish, a pass/fail summary prints to stderr and is written
-# to logs/<run-timestamp>/summary.log; a nonzero script exit code means at
-# least one run failed.
+# (concurrent `modal run` output interleaved on one terminal is unreadable),
+# alongside commands.tsv (the exact command queued for each label). After all
+# runs finish, a pass/fail summary prints to stderr and is written to
+# logs/<run-timestamp>/summary.log; a nonzero script exit code means at least
+# one run failed.
 set -euo pipefail
 
 # Modal's own guidance: avoid more than 5 concurrent Volume commits (each
@@ -91,6 +92,7 @@ if [[ "${1:-}" == "--dry-run" ]]; then
 fi
 
 mkdir -p "$LOG_DIR"
+cp "$CMDS" "$LOG_DIR/commands.tsv"  # $CMDS itself is deleted by the EXIT trap
 echo "Per-run logs: $LOG_DIR" >&2
 
 # Not `xargs -I`: macOS/BSD xargs caps the -I replacement at ~255 bytes and
