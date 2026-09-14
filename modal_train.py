@@ -14,12 +14,12 @@ REPO_URL = "https://github.com/eshaanpathak/nano-world-model.git"
 # branches have been merged in for my own Modal runs. Rebase this branch
 # onto main (kept in sync with upstream) to pick up new merged work.
 REPO_BRANCH = "personal"
+REPO_DIR = "/opt/nanowm"
 
 # NOTE: this clones a fixed branch from GitHub at image-build time, so
 # uncommitted local changes are NOT included. Push your changes first, or
-# swap this for `modal.Image.add_local_dir(".", "/repo", copy=True)` to ship
-# the local tree instead (that will also pull in any large local
-# data/results directories, so add an `ignore=` filter if you do).
+# NOTE: this clones a fixed branch from GitHub at image-build time, so
+# uncommitted local changes are NOT included. Push your changes first.
 # CI pins uv 0.12.0. A newer uv will often try to rewrite uv.lock (new
 # lock revision / marker fields) and then `uv sync --locked` fails even
 # though the committed lock is valid. `--frozen` installs that lock as-is.
@@ -38,15 +38,15 @@ image = (
             "PATH": "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         }
     )
-    .run_commands(f"git clone --depth 1 --branch {REPO_BRANCH} {REPO_URL} /repo")
-    #.run_commands("rm -f /repo/modal_train.py")
-    .workdir("/repo")
-    .run_commands(f"{UV_BIN} --version && {UV_BIN} sync --frozen --managed-python")
-    # The pinned wandb==0.21.1 crashes in a legacy, non-essential codepath
-    # (server.py's `viewer` query, used only to print "logged in as <user>")
-    # when the current wandb.ai backend returns `flags: null` — a client-side
-    # SDK bug unrelated to the rest of the locked stack. Upgrade just wandb.
-    .run_commands(f"{UV_BIN} pip install -U wandb")
+    .run_commands(
+        f"git clone --depth 1 --branch {REPO_BRANCH} {REPO_URL} {REPO_DIR}"
+    )
+    .run_commands(
+        f"cd {REPO_DIR} && {UV_BIN} --version && {UV_BIN} sync --frozen --managed-python"
+    )
+    .run_commands(
+        f"cd {REPO_DIR} && {UV_BIN} pip install -U wandb"
+    )
 )
 
 data_volume = modal.Volume.from_name("nanowm-data", create_if_missing=True)
@@ -104,7 +104,7 @@ def train(
     }
 
     args = [
-        "/repo/.venv/bin/python",
+        f"{REPO_DIR}/.venv/bin/python",
         "src/main.py",
         f"experiment={experiment}",
         f"dataset={dataset}",
@@ -120,7 +120,7 @@ def train(
         # comma-separated lists (e.g. wandb.tags=[a,b]), which a "," split would mangle.
         args.extend(kv.strip() for kv in overrides.split(";") if kv.strip())
 
-    subprocess.run(args, cwd="/repo", env=env, check=True)
+    subprocess.run(args, cwd=REPO_DIR, env=env, check=True)
 
     results_volume.commit()
 
