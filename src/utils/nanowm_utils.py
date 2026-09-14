@@ -96,8 +96,7 @@ def clip_grad_norm_(
     if isinstance(parameters, torch.Tensor):
         parameters = [parameters]
     # Materialize once so we can still recover a device when no grads exist
-    # (Lightning 2.x default `set_to_none=True` leaves p.grad == None inside
-    # training_step, and a CPU fallback tensor breaks NCCL sync_dist).
+    # (a CPU fallback tensor breaks NCCL sync_dist).
     params_list = list(parameters)
     grads = [p.grad for p in params_list if p.grad is not None]
     max_norm = float(max_norm)
