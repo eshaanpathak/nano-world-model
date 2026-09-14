@@ -79,6 +79,7 @@ def train(
     max_steps: int = 100_000,
     batch_size: int = 8,
     group: str = None,
+    overrides: str = "",
 ):
     import os
     import subprocess
@@ -113,6 +114,8 @@ def train(
     ]
     if group:
         args.append(f"wandb.group={group}")
+    if overrides:
+        args.extend(kv.strip() for kv in overrides.split(",") if kv.strip())
 
     subprocess.run(args, cwd="/repo", env=env, check=True)
 
@@ -127,6 +130,7 @@ def main(
     max_steps: int = 100_000,
     batch_size: int = 8,
     group: str = None,
+    overrides: str = "",
 ):
     train.remote(
         model=model,
@@ -135,4 +139,5 @@ def main(
         max_steps=max_steps,
         batch_size=batch_size,
         group=group,
+        overrides=overrides,
     )
