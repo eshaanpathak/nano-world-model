@@ -22,7 +22,7 @@ import sys
 
 import wandb
 
-METRICS = ["train_loss", "gradient_norm", "val_loss", "val_eval/fid", "val_eval/fvd"]
+METRICS = ["train_loss", "gradient_norm", "val_loss", "val_eval/psnr", "val_eval/ssim", "val_eval/lpips", "val_eval/fid", "val_eval/fvd"]
 
 
 def fetch_runs(api, project, group=None, tag=None, run_ids=None):
