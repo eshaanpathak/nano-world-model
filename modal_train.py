@@ -115,7 +115,9 @@ def train(
     if group:
         args.append(f"wandb.group={group}")
     if overrides:
-        args.extend(kv.strip() for kv in overrides.split(",") if kv.strip())
+        # ";"-separated, not ",": several hydra override values are themselves
+        # comma-separated lists (e.g. wandb.tags=[a,b]), which a "," split would mangle.
+        args.extend(kv.strip() for kv in overrides.split(";") if kv.strip())
 
     subprocess.run(args, cwd="/repo", env=env, check=True)
 
