@@ -39,6 +39,7 @@ image = (
         }
     )
     .run_commands(f"git clone --depth 1 --branch {REPO_BRANCH} {REPO_URL} /repo")
+    #.run_commands("rm -f /repo/modal_train.py")
     .workdir("/repo")
     .run_commands(f"{UV_BIN} --version && {UV_BIN} sync --frozen --managed-python")
     # The pinned wandb==0.21.1 crashes in a legacy, non-essential codepath
