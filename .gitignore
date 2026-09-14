@@ -75,3 +75,6 @@ multirun/
 *.log
 pretrained_models/
 wandb/
+
+# Per-run logs from scripts/run_experiments.sh
+scripts/logs/
