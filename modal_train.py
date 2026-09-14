@@ -27,6 +27,17 @@ REPO_DIR = "/opt/nanowm"
 UV_VERSION = "0.12.0"
 UV_BIN = "/root/.local/bin/uv"
 
+# Modal caches each run_commands() layer by its literal command string, not
+# by what the command fetches over the network -- a plain `git clone --branch
+# personal ...` hashes the same on every build, so pushing new commits to
+# personal silently keeps reusing a stale clone. Baking the branch's current
+# commit SHA into the command text forces a cache miss (and rebuild of every
+# layer after it) exactly when the branch has actually moved, and a cache hit
+# otherwise.
+import subprocess
+
+REPO_SHA = subprocess.check_output(["git", "ls-remote", REPO_URL, REPO_BRANCH]).split()[0].decode()
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git", "curl", "build-essential")
@@ -39,7 +50,7 @@ image = (
         }
     )
     .run_commands(
-        f"git clone --depth 1 --branch {REPO_BRANCH} {REPO_URL} {REPO_DIR}"
+        f"git clone --depth 1 --branch {REPO_BRANCH} {REPO_URL} {REPO_DIR} && echo build-commit={REPO_SHA}"
     )
     .run_commands(
         f"cd {REPO_DIR} && {UV_BIN} --version && {UV_BIN} sync --frozen --managed-python"
