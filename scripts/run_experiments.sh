@@ -17,9 +17,24 @@
 # Each run's stdout/stderr goes to its own file under logs/<run-timestamp>/
 # (concurrent `modal run` output interleaved on one terminal is unreadable),
 # alongside commands.tsv (the exact command queued for each label). After all
-# runs finish, a pass/fail summary prints to stderr and is written to
-# logs/<run-timestamp>/summary.log; a nonzero script exit code means at least
-# one run failed.
+# runs finish (or you Ctrl-C), a summary prints to stderr and is written to
+# logs/<run-timestamp>/summary.log, breaking runs into: succeeded, FAILED,
+# INTERRUPTED (killed mid-run by Ctrl-C), and NOT STARTED (still queued when
+# you hit Ctrl-C). A nonzero script exit code means something didn't
+# succeed cleanly (a failure, or you interrupting it).
+#
+# Ctrl-C stops both the queueing loop AND every already-launched run: the
+# INT trap below SIGTERMs the tracked child PIDs directly. Plain Ctrl-C
+# would NOT do this on its own -- bash sets SIGINT to be ignored for any
+# `cmd &` started from a non-interactive script, precisely so background
+# jobs survive a Ctrl-C aimed at the foreground script. SIGTERM isn't
+# subject to that ignore-by-default rule, so it reaches the children (their
+# own `modal run` process, and whatever it forked) even though SIGINT
+# wouldn't. This is safe to do at any point: each run writes to its own
+# timestamped hydra dir (never shared across runs) and only touches the
+# shared results volume via commit() after finishing locally, so a run
+# killed mid-flight just never gets exposed there -- it can't corrupt or
+# collide with any other run's output.
 set -euo pipefail
 
 # Modal's own guidance: avoid more than 5 concurrent Volume commits (each
@@ -31,6 +46,96 @@ trap 'rm -f "$CMDS"' EXIT
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_TS=$(date +%Y-%m-%d_%H-%M-%S)
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_TS"
+
+# Recursively TERMs a pid and every descendant, deepest first. Not `kill
+# -TERM "${PIDS[@]}"` in on_interrupt below: that only reaches the tracked
+# `eval "$cmd" &` subshells, not whatever they fork underneath (verified --
+# a compound eval'd command left its grandchild running, orphaned, after
+# its immediate parent died). Not `kill -TERM -- -$$` (whole process group)
+# either: that assumes this script's pid is also its process group's
+# leader, which isn't guaranteed by how it might be invoked (verified false
+# under at least one wrapper) -- get it wrong and you either miss processes
+# or, worse, signal something outside this script's own job entirely. A
+# plain parent->child walk has no such assumption.
+kill_tree() {
+  local pid=$1 child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+# Buckets shared by the normal end-of-run summary and the Ctrl-C summary
+# below, so both print in the same format via print_summary().
+PIDS=()
+LABELS=()
+OK_LABELS=()
+FAILED_LABELS=()
+INTERRUPTED_LABELS=()
+NOT_STARTED_LABELS=()
+
+print_summary() {
+  local status_suffix=$1  # "" for a normal finish, " -- INTERRUPTED" for Ctrl-C
+  {
+    echo "== run_experiments.sh summary ($RUN_TS)$status_suffix =="
+    echo "${#OK_LABELS[@]}/$n_cmds runs succeeded."
+    if [ "${#FAILED_LABELS[@]}" -gt 0 ]; then
+      echo "FAILED (${#FAILED_LABELS[@]}):"
+      for label in "${FAILED_LABELS[@]}"; do
+        echo "  - $label  (log: $LOG_DIR/*_${label}.log)"
+      done
+    fi
+    if [ "${#INTERRUPTED_LABELS[@]}" -gt 0 ]; then
+      echo "INTERRUPTED (${#INTERRUPTED_LABELS[@]}): ${INTERRUPTED_LABELS[*]}"
+    fi
+    if [ "${#NOT_STARTED_LABELS[@]}" -gt 0 ]; then
+      echo "NOT STARTED (${#NOT_STARTED_LABELS[@]}): ${NOT_STARTED_LABELS[*]}"
+    fi
+  } | tee "$LOG_DIR/summary.log" >&2
+}
+
+on_interrupt() {
+  echo "" >&2
+  if [ "${#PIDS[@]}" -eq 0 ]; then
+    echo "Ctrl-C: no runs had started yet." >&2
+    exit 130
+  fi
+
+  echo "Ctrl-C: stopping ${#PIDS[@]} in-flight run(s)..." >&2
+  for pid in "${PIDS[@]}"; do
+    kill_tree "$pid"
+  done
+
+  # A job that had already finished (fast run, race with Ctrl-C) still
+  # reports its real exit status here -- kill_tree on an already-dead pid is
+  # a harmless no-op. 143 = 128+SIGTERM is what `wait` reports for a job we
+  # just killed; anything else nonzero is a genuine failure that happened
+  # before the interrupt, not something Ctrl-C caused.
+  for i in "${!PIDS[@]}"; do
+    pid=${PIDS[$i]}
+    label=${LABELS[$i]}
+    if wait "$pid"; then
+      OK_LABELS+=("$label")
+    else
+      status=$?
+      if [ "$status" -eq 143 ]; then
+        INTERRUPTED_LABELS+=("$label")
+      else
+        FAILED_LABELS+=("$label")
+      fi
+    fi
+  done
+
+  if [ "$idx" -lt "$n_cmds" ]; then
+    while IFS=$'\t' read -r label _; do
+      NOT_STARTED_LABELS+=("$label")
+    done < <(tail -n "+$((idx + 1))" "$CMDS")
+  fi
+
+  print_summary " -- INTERRUPTED"
+  exit 130
+}
+trap on_interrupt INT
 
 # Each queued line is "label<TAB>command" -- the label (sweep name + arm)
 # is used for the per-run log filename and the failure summary, so a failed
@@ -99,8 +204,6 @@ echo "Per-run logs: $LOG_DIR" >&2
 # fails outright ("command line cannot be assembled, too long") on our
 # --overrides lines, which run 270-330 chars. A plain throttled loop has no
 # such limit and works identically on bash/zsh, Linux/macOS.
-PIDS=()
-LABELS=()
 idx=0
 while IFS=$'\t' read -r label cmd; do
   idx=$((idx + 1))
@@ -126,26 +229,16 @@ done < "$CMDS"
 
 # Collect exit codes individually (plain `wait` only reports the status of
 # the last job waited on) so we can report exactly which runs failed.
-FAILED_LABELS=()
 for i in "${!PIDS[@]}"; do
-  if ! wait "${PIDS[$i]}"; then
+  if wait "${PIDS[$i]}"; then
+    OK_LABELS+=("${LABELS[$i]}")
+  else
     FAILED_LABELS+=("${LABELS[$i]}")
   fi
 done
 
-n_failed=${#FAILED_LABELS[@]}
-n_ok=$((n_cmds - n_failed))
-{
-  echo "== run_experiments.sh summary ($RUN_TS) =="
-  echo "$n_ok/$n_cmds runs succeeded."
-  if [ "$n_failed" -gt 0 ]; then
-    echo "FAILED ($n_failed):"
-    for label in "${FAILED_LABELS[@]}"; do
-      echo "  - $label  (log: $LOG_DIR/*_${label}.log)"
-    done
-  fi
-} | tee "$LOG_DIR/summary.log" >&2
+print_summary ""
 
-if [ "$n_failed" -gt 0 ]; then
+if [ "${#FAILED_LABELS[@]}" -gt 0 ]; then
   exit 1
 fi
