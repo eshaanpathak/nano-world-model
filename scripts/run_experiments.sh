@@ -37,6 +37,21 @@
 # collide with any other run's output.
 set -euo pipefail
 
+# A long unattended sweep can outlast the terminal's idle-sleep window --
+# once the Mac sleeps, the network drops out from under every in-flight
+# `modal run`, and the local process for each run loses its connection even
+# though `--detach` (below) keeps the remote job itself alive on Modal. That
+# desyncs this script's own bookkeeping: it decides success/failure and
+# concurrency slots from the *local* `modal run` exit status, so a
+# disconnect makes it report a still-running remote job as FAILED and queue
+# a duplicate run in the freed "slot". `caffeinate -i` keeps the Mac (and
+# therefore the network) awake for the script's lifetime so that never
+# happens; re-exec under a guard var so this only wraps once.
+if [[ -z "${RUN_EXPERIMENTS_CAFFEINATED:-}" ]] && command -v caffeinate >/dev/null 2>&1; then
+  export RUN_EXPERIMENTS_CAFFEINATED=1
+  exec caffeinate -i "$0" "$@"
+fi
+
 # Modal's own guidance: avoid more than 5 concurrent Volume commits (each
 # train() run ends with results_volume.commit()) to avoid commit contention.
 MAX_CONCURRENT=5
@@ -147,45 +162,45 @@ enqueue() {
 # 1. Prediction target sweep (dino_wm/wall, nanowm_s2)
 G=pred_target_sweep_$(date +%m-%d-%Y_%H-%M-%S)
 for pred in v x; do
-  enqueue "pred_target_sweep-$pred" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=$pred;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[$pred]\""
+  enqueue "pred_target_sweep-$pred" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=$pred;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[$pred]\""
 done
 # No extra overrides for flow: src/diffusion/flow_matching.py's FlowMatching
 # class ignores noise_schedule/zero_terminal_snr entirely (never receives the
 # computed betas) and snr_gamma is explicitly a no-op ("unused, kept for API
 # compat") -- it always uses plain unweighted MSE against u = x_0 - eps.
-enqueue "pred_target_sweep-flow" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=flow;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[flow]\""
-enqueue "pred_target_sweep-epsilon" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=epsilon;experiment.diffusion.noise_schedule=linear;experiment.diffusion.zero_terminal_snr=false;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[epsilon]\""
+enqueue "pred_target_sweep-flow" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=flow;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[flow]\""
+enqueue "pred_target_sweep-epsilon" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=epsilon;experiment.diffusion.noise_schedule=linear;experiment.diffusion.zero_terminal_snr=false;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[epsilon]\""
 
 # 2. Action injection (dino_wm/pusht, nanowm_s2)
 G=injection_sweep_$(date +%m-%d-%Y_%H-%M-%S)
 for inj in additive film adaln adaln_fuse cross_attention; do
-  enqueue "injection_sweep-$inj" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/pusht --max-steps 2000 --group $G --overrides \"model.action_injection.type=$inj;wandb.tags=[$inj]\""
+  enqueue "injection_sweep-$inj" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/pusht --max-steps 2000 --group $G --overrides \"model.action_injection.type=$inj;wandb.tags=[$inj]\""
 done
 
 # 3. Model scale (dino_wm/wall, nanowm_s2 vs nanowm_b2)
 G=scale_sweep_$(date +%m-%d-%Y_%H-%M-%S)
-enqueue "scale_sweep-nanowm_s2" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G"
-enqueue "scale_sweep-nanowm_b2" "modal run modal_train.py --model nanowm_b2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G"
+enqueue "scale_sweep-nanowm_s2" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G"
+enqueue "scale_sweep-nanowm_b2" "modal run --detach modal_train.py --model nanowm_b2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G"
 
 # 4. Noise schedule / ZTSNR (dino_wm/wall, nanowm_s2)
 G=schedule_sweep_$(date +%m-%d-%Y_%H-%M-%S)
-enqueue "schedule_sweep-cosine_ztsnr_eps" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=epsilon;experiment.diffusion.noise_schedule=squaredcos_cap_v2;experiment.diffusion.zero_terminal_snr=true;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[cosine_ztsnr_eps]\""
-enqueue "schedule_sweep-linear_eps" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=epsilon;experiment.diffusion.noise_schedule=linear;experiment.diffusion.zero_terminal_snr=false;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[linear_eps]\""
+enqueue "schedule_sweep-cosine_ztsnr_eps" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=epsilon;experiment.diffusion.noise_schedule=squaredcos_cap_v2;experiment.diffusion.zero_terminal_snr=true;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[cosine_ztsnr_eps]\""
+enqueue "schedule_sweep-linear_eps" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.diffusion.pred_name=epsilon;experiment.diffusion.noise_schedule=linear;experiment.diffusion.zero_terminal_snr=false;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[linear_eps]\""
 
 # 5. Gradient clipping (dino_wm/wall, nanowm_s2)
 G=clip_sweep_$(date +%m-%d-%Y_%H-%M-%S)
-enqueue "clip_sweep-clip_on" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.training.gradient_clip_start_step=0;experiment.training.gradient_clip_norm=0.1;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[clip_on]\""
-enqueue "clip_sweep-clip_off" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.training.gradient_clip_start_step=0;experiment.training.gradient_clip_norm=1e9;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[clip_off]\""
+enqueue "clip_sweep-clip_on" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.training.gradient_clip_start_step=0;experiment.training.gradient_clip_norm=0.1;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[clip_on]\""
+enqueue "clip_sweep-clip_off" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 4000 --group $G --overrides \"experiment.training.gradient_clip_start_step=0;experiment.training.gradient_clip_norm=1e9;experiment.training.optimizer.lr_warmup_steps=200;wandb.tags=[clip_off]\""
 
 # 6. Timestep sampling (dino_wm/wall, nanowm_s2)
 G=timestep_sweep_$(date +%m-%d-%Y_%H-%M-%S)
-enqueue "timestep_sweep-uniform" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G --overrides \"experiment.diffusion.timestep_sampling=uniform;wandb.tags=[uniform]\""
-enqueue "timestep_sweep-logit_normal" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G --overrides \"experiment.diffusion.timestep_sampling=logit_normal;wandb.tags=[logit_normal]\""
+enqueue "timestep_sweep-uniform" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G --overrides \"experiment.diffusion.timestep_sampling=uniform;wandb.tags=[uniform]\""
+enqueue "timestep_sweep-logit_normal" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/wall --max-steps 2000 --group $G --overrides \"experiment.diffusion.timestep_sampling=logit_normal;wandb.tags=[logit_normal]\""
 
 # 7. Dataset comparison (nanowm_s2, across point_maze / wall / pusht)
 G=dataset_sweep_$(date +%m-%d-%Y_%H-%M-%S)
 for ds in wall point_maze pusht; do
-  enqueue "dataset_sweep-$ds" "modal run modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/$ds --max-steps 2000 --group $G --overrides \"wandb.tags=[$ds]\""
+  enqueue "dataset_sweep-$ds" "modal run --detach modal_train.py --model nanowm_s2 --experiment quickstart --dataset dino_wm/$ds --max-steps 2000 --group $G --overrides \"wandb.tags=[$ds]\""
 done
 
 n_cmds=$(wc -l < "$CMDS" | tr -d ' ')
